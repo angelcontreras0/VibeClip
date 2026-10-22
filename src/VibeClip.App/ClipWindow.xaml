@@ -9,10 +9,10 @@
    </Grid>
    <Border Grid.Column="2" Style="{StaticResource Card}" Padding="18"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel>
     <TextBlock Text="Audio del clip" Style="{StaticResource Section}"/>
-    <ComboBox x:Name="MixMode" SelectionChanged="MixModeChanged"><ComboBoxItem Content="Pista principal"/><ComboBoxItem Content="Mezcla por pistas"/></ComboBox>
+    <ComboBox x:Name="MixMode" SelectionChanged="MixModeChanged"><ComboBoxItem Content="Mezcla de fuentes"/><ComboBoxItem Content="Solo primera pista"/><ComboBoxItem Content="Selección manual"/></ComboBox>
     <TextBlock x:Name="AudioStatus" Text="Analizando las pistas grabadas…" Foreground="{StaticResource Muted}" FontSize="12" Margin="0,6,0,12"/>
     <StackPanel x:Name="TrackRows"/>
-    <TextBlock Text="Los ajustes por pista se aplican a la copia exportada. La reproducción usa la pista principal." Foreground="{StaticResource Muted}" FontSize="11" Margin="0,14,0,0"/>
+    <TextBlock Text="Marca las fuentes que quieras escuchar. Al cambiar una opción se prepara la mezcla; pulsa ▶ cuando esté lista. Escritorio se excluye por defecto si hay pistas de aplicaciones para evitar duplicarlas." Foreground="{StaticResource Muted}" FontSize="11" Margin="0,14,0,0"/>
     <Border Height="1" Background="#343D4B" Margin="0,24,0,20"/>
     <TextBlock Text="Cómo guardar" Style="{StaticResource Section}"/>
     <ComboBox x:Name="ExportMode" SelectedIndex="0"><ComboBoxItem Content="Rápido · Corte aproximado"/><ComboBoxItem Content="Exacto · Recodifica video"/></ComboBox>

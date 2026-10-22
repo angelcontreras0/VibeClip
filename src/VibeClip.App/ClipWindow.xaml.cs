@@ -16,6 +16,12 @@ public partial class ClipWindow : Window
     private TaskCompletionSource? exportCompleted;
     private readonly List<(AudioTrack Track, CheckBox Enabled, Slider Volume)> trackControls = [];
     private MediaInfo? info;
+    private readonly string previewFolder = Path.Combine(Path.GetTempPath(), "VibeClip-preview-" + Guid.NewGuid().ToString("N"));
+    private CancellationTokenSource? previewCancellation;
+    private Task previewTask = Task.CompletedTask;
+    private string? previewFile;
+    private bool preparingPreview, settingMix, replacingPreview, playbackMuted;
+    private TimeSpan previewPosition;
     private TimeSpan duration;
     private TrimRange range;
     private bool opened, updating, exporting;
@@ -33,7 +39,7 @@ public partial class ClipWindow : Window
         };
         Loaded += async (_, _) => { Player.Play(); Player.Pause(); await LoadInfoAsync(); };
         Closing += (_, e) => { if (exporting) { e.Cancel = true; exportCancellation?.Cancel(); Status.Text = "Cancelando la exportación… Cierra el visor cuando termine."; } };
-        Closed += (_, _) => { lifetime.Cancel(); timer.Stop(); Player.Close(); Player.Source = null; lifetime.Dispose(); };
+        Closed += (_, _) => { lifetime.Cancel(); previewCancellation?.Cancel(); timer.Stop(); Player.Close(); Player.Source = null; _ = CleanupPreviewAsync(); };
         IsVisibleChanged += (_, _) => { if (!IsVisible) { timer.Stop(); Player.Pause(); } };
         StateChanged += (_, _) => { if (WindowState == WindowState.Minimized) { timer.Stop(); Player.Pause(); } };
     }
@@ -48,9 +54,11 @@ public partial class ClipWindow : Window
             {
                 var panel = new StackPanel { Margin = new Thickness(0, 8, 0, 8) };
                 var enabled = new CheckBox { Content = track.Name, IsChecked = true };
-                var volume = new Slider { Minimum = 0, Maximum = 1.5, Value = 1, ToolTip = "Volumen al exportar: 0 a 150 %" };
+                var volume = new Slider { Minimum = 0, Maximum = 1.5, Value = 1, ToolTip = "Volumen de reproducción y exportación: 0 a 150 %" };
                 panel.Children.Add(enabled); panel.Children.Add(volume); TrackRows.Children.Add(panel);
                 trackControls.Add((track, enabled, volume));
+                enabled.Checked += (_, _) => MixEdited(); enabled.Unchecked += (_, _) => MixEdited();
+                volume.ValueChanged += (_, _) => MixEdited();
             }
             AudioStatus.Text = info.AudioTracks.Count == 0 ? "Este archivo no contiene pistas de audio." : "Solo se muestran pistas presentes en el archivo.";
             ApplyMixMode(); ExportButton.IsEnabled = opened;
@@ -64,6 +72,11 @@ public partial class ClipWindow : Window
     private void MediaOpened(object sender, RoutedEventArgs e)
     {
         if (!Player.NaturalDuration.HasTimeSpan) { Status.Text = "No se pudo leer la duración."; return; }
+        if (replacingPreview && opened)
+        {
+            replacingPreview = false; Player.Pause(); Player.Position = previewPosition;
+            Status.Text = "Mezcla lista. Pulsa ▶ para escucharla."; return;
+        }
         duration = Player.NaturalDuration.TimeSpan;
         if (info is not null && info.Duration < duration) duration = info.Duration;
         updating = true; Seek.Maximum = StartSlider.Maximum = EndSlider.Maximum = duration.TotalSeconds;
@@ -74,12 +87,12 @@ public partial class ClipWindow : Window
     private void MediaEnded(object sender, RoutedEventArgs e) { timer.Stop(); Player.Pause(); Player.Position = range.Start; }
     private void Play(object sender, RoutedEventArgs e)
     {
-        if (!opened) return;
+        if (!opened || preparingPreview || replacingPreview) return;
         if (Player.Position < range.Start || Player.Position >= range.End) Player.Position = range.Start;
         Player.Play(); timer.Start();
     }
     private void Pause(object sender, RoutedEventArgs e) { Player.Pause(); timer.Stop(); }
-    private void Mute(object sender, RoutedEventArgs e) => Player.IsMuted = ((CheckBox)sender).IsChecked == true;
+    private void Mute(object sender, RoutedEventArgs e) { playbackMuted = ((CheckBox)sender).IsChecked == true; Player.IsMuted = playbackMuted; }
     private void SeekReleased(object sender, MouseButtonEventArgs e)
     { if (opened) { Player.Position = TimeSpan.FromSeconds(Seek.Value); PositionLabel.Text = Format(Player.Position) + " / " + Format(duration); } }
     private void MarkStart(object sender, RoutedEventArgs e) => SetRange(new(Player.Position, range.End));
@@ -102,22 +115,82 @@ public partial class ClipWindow : Window
     private void MixModeChanged(object sender, SelectionChangedEventArgs e) { if (TrackRows is not null) ApplyMixMode(); }
     private void ApplyMixMode()
     {
+        if (info is null || settingMix) return;
+        settingMix = true;
+        var defaults = ClipPreview.DefaultMix(info.AudioTracks);
         foreach (var control in trackControls)
         {
-            var active = MixMode.SelectedIndex == 0 ? control.Track.Ordinal == 0 : control.Track.Ordinal != 0;
-            control.Enabled.IsEnabled = active; control.Volume.IsEnabled = active;
-            control.Enabled.Opacity = active ? 1 : 0.4; control.Volume.Opacity = active ? 1 : 0.4;
+            control.Enabled.IsChecked = MixMode.SelectedIndex == 0 ? defaults.Any(t => t.Ordinal == control.Track.Ordinal)
+                : MixMode.SelectedIndex == 1 ? control.Track.Ordinal == 0 : control.Enabled.IsChecked;
         }
-        if (MixMode.SelectedIndex == 1)
-            AudioStatus.Text = "La pista principal queda fuera de esta mezcla. Si contiene todo el escritorio, evitarás duplicar su audio. Selecciona las fuentes grabadas que necesites.";
-        else if (info is not null) AudioStatus.Text = info.AudioTracks.Count == 0 ? "Este archivo no contiene pistas de audio." : "La primera pista es la principal. Revisa sus nombres antes de mezclar.";
+        settingMix = false;
+        QueuePreview();
+    }
+    private void MixEdited()
+    {
+        if (settingMix || info is null) return;
+        settingMix = true; MixMode.SelectedIndex = 2; settingMix = false;
+        QueuePreview();
+    }
+    private MixTrack[] SelectedTracks() => trackControls.Where(c => c.Enabled.IsChecked == true && c.Volume.Value > 0)
+        .Select(c => new MixTrack(c.Track.Ordinal, c.Volume.Value)).ToArray();
+    private void QueuePreview()
+    {
+        previewCancellation?.Cancel();
+        if (info is null || lifetime.IsCancellationRequested) return;
+        var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
+        previewCancellation = cancellation;
+        var previous = previewTask;
+        Player.Pause(); timer.Stop(); preparingPreview = true;
+        AudioStatus.Text = "Preparando la mezcla local…";
+        previewTask = PreparePreviewAsync(previous, SelectedTracks(), cancellation);
+    }
+    private async Task PreparePreviewAsync(Task previous, MixTrack[] tracks, CancellationTokenSource cancellation)
+    {
+        string? created = null;
+        try
+        {
+            await previous;
+            await Task.Delay(350, cancellation.Token);
+            Directory.CreateDirectory(previewFolder);
+            created = Path.Combine(previewFolder, Guid.NewGuid().ToString("N") + ".mp4");
+            await ClipPreview.CreateAsync(ffmpeg, input, created, info!, tracks, cancellation.Token);
+            cancellation.Token.ThrowIfCancellationRequested();
+            previewPosition = Player.Position;
+            Player.Close(); Player.Source = null;
+            if (previewFile is not null) TryDelete(previewFile);
+            previewFile = created; created = null;
+            replacingPreview = true; Player.IsMuted = playbackMuted; Player.Source = new Uri(previewFile); Player.Play(); Player.Pause();
+            AudioStatus.Text = tracks.Length == 0 ? "Reproducción sin audio." : "Escuchas las fuentes marcadas. Los volúmenes también se aplican al exportar.";
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or Win32Exception)
+        {
+            Player.IsMuted = true;
+            AudioStatus.Text = "No se pudo preparar la mezcla: " + ex.Message;
+            Status.Text = "Vista previa silenciada para evitar reproducir una mezcla anterior.";
+        }
+        finally
+        {
+            if (created is not null) TryDelete(created);
+            if (ReferenceEquals(previewCancellation, cancellation)) { preparingPreview = false; previewCancellation = null; }
+            cancellation.Dispose();
+        }
+    }
+    private static void TryDelete(string path) { try { File.Delete(path); } catch (IOException) { } catch (UnauthorizedAccessException) { } }
+    private async Task CleanupPreviewAsync()
+    {
+        await previewTask;
+        try { if (Directory.Exists(previewFolder)) Directory.Delete(previewFolder, true); }
+        catch (IOException) { } catch (UnauthorizedAccessException) { }
+        lifetime.Dispose();
     }
     private async void Export(object sender, RoutedEventArgs e)
     {
         if (info is null || !opened || exporting) return;
         var dialog = new Microsoft.Win32.SaveFileDialog { Title = "Guardar copia local", Filter = "Video MP4|*.mp4", FileName = Path.GetFileNameWithoutExtension(input) + "_recorte.mp4", InitialDirectory = Path.GetDirectoryName(input), OverwritePrompt = true };
         if (dialog.ShowDialog(this) != true) return;
-        var tracks = trackControls.Where(c => c.Enabled.IsEnabled && c.Enabled.IsChecked == true && c.Volume.Value > 0).Select(c => new MixTrack(c.Track.Ordinal, c.Volume.Value)).ToArray();
+        var tracks = SelectedTracks();
         exporting = true; exportCompleted = new(TaskCreationOptions.RunContinuationsAsynchronously); ExportButton.IsEnabled = false; CancelExport.Visibility = Visibility.Visible;
         exportCancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
         Player.Pause(); timer.Stop(); Status.Text = "Procesando copia local…";
@@ -130,7 +203,7 @@ public partial class ClipWindow : Window
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or Win32Exception) { Status.Text = ex.Message; }
         finally { exporting = false; ExportButton.IsEnabled = true; CancelExport.Visibility = Visibility.Collapsed; exportCancellation.Dispose(); exportCancellation = null; exportCompleted.TrySetResult(); }
     }
-    public Task CancelPendingAsync() { exportCancellation?.Cancel(); return exportCompleted?.Task ?? Task.CompletedTask; }
+    public Task CancelPendingAsync() { lifetime.Cancel(); previewCancellation?.Cancel(); exportCancellation?.Cancel(); return Task.WhenAll(previewTask, exportCompleted?.Task ?? Task.CompletedTask); }
     private void CancelExportClick(object sender, RoutedEventArgs e) => exportCancellation?.Cancel();
     private void Back(object sender, RoutedEventArgs e) => Close();
 }

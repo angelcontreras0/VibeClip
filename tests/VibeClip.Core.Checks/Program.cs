@@ -13,6 +13,9 @@ Directory.CreateDirectory(folder);
 try
 {
     var defaults = new AppSettings(); defaults.Validate();
+    Check(ClipPreview.DefaultMix([new(0, "Escritorio", 2), new(1, "Micrófono", 2)]).Count == 2, "preview keeps desktop and microphone together");
+    Check(ClipPreview.DefaultMix([new(0, "Escritorio", 2), new(1, "Juego", 2), new(2, "Micrófono", 2), new(3, "Discord", 2)])
+        .Select(t => t.Ordinal).SequenceEqual(new[] { 1, 2, 3 }), "preview includes microphone and applications without duplicated desktop");
     Check(defaults.Width == 1920 && defaults.Height == 1080 && defaults.FramesPerSecond == 60, "1080p60 defaults");
     Reject(() => (defaults with { ClipSeconds = -1 }).Validate(), "negative buffer rejected");
     Reject(() => (defaults with { ClipSeconds = 601 }).Validate(), "unbounded buffer rejected");
@@ -70,6 +73,40 @@ try
         var before = System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(sample));
         var media = await exporter.ProbeAsync(sample);
         Check(media.AudioTracks.Count == 2 && media.AudioTracks[1].Name == "Música", "actual audio tracks detected");
+        async Task<double[]> PreviewTones(string name, MixTrack[] selection)
+        {
+            var preview = Path.Combine(folder, name + ".mp4");
+            await ClipPreview.CreateAsync(engine, sample, preview, media, selection);
+            Check((await exporter.ProbeAsync(preview)).AudioTracks.Count == 1, name + " produces a single playable mix");
+            var raw = Path.Combine(folder, name + ".pcm");
+            var decoded = await MediaTools.RunAsync(engine, ["-v", "error", "-nostdin", "-i", preview, "-map", "0:a:0", "-ac", "1", "-ar", "48000", "-f", "s16le", raw]);
+            Check(decoded.ExitCode == 0, name + " preview audio decodes");
+            var bytes = File.ReadAllBytes(raw);
+            return new[] { 440, 880 }.Select(frequency =>
+            {
+                double sine = 0, cosine = 0; const int start = 48000, count = 48000;
+                for (int n = 0; n < count; n++)
+                {
+                    var value = BitConverter.ToInt16(bytes, (start + n) * 2) / 32768d;
+                    var phase = 2 * Math.PI * frequency * n / 48000;
+                    sine += value * Math.Sin(phase); cosine += value * Math.Cos(phase);
+                }
+                return 2 * Math.Sqrt(sine * sine + cosine * cosine) / count;
+            }).ToArray();
+        }
+        var bothTones = await PreviewTones("preview-all", [new(0, 1), new(1, 1)]);
+        Check(bothTones.All(a => a > 0.08), "preview actually contains both source frequencies");
+        var isolatedTone = await PreviewTones("preview-isolated", [new(1, 0.5)]);
+        Check(isolatedTone[0] < 0.005 && isolatedTone[1] > 0.04 && isolatedTone[1] < 0.08, "preview mute and source volume are audible in rendered samples");
+        var previewSilent = Path.Combine(folder, "preview-silent.mp4");
+        await ClipPreview.CreateAsync(engine, sample, previewSilent, media, []);
+        Check((await exporter.ProbeAsync(previewSilent)).AudioTracks.Count == 0, "preview allows all sources muted");
+        using (var cancellation = new CancellationTokenSource())
+        {
+            cancellation.Cancel(); var cancelledPreview = Path.Combine(folder, "preview-cancelled.mp4");
+            try { await ClipPreview.CreateAsync(engine, sample, cancelledPreview, media, [new(0, 1)], cancellation.Token); throw new Exception("Preview cancellation ignored"); }
+            catch (OperationCanceledException) { Check(!File.Exists(cancelledPreview) && !Directory.EnumerateFiles(folder, ".vibeclip-*.mp4").Any(), "cancelled preview cleans partial files"); }
+        }
         var output = Path.Combine(folder, "exact.mp4");
         await exporter.ExportAsync(sample, output, new(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(3)), media.Duration, [new MixTrack(1, 0.5)], true);
         var exported = await exporter.ProbeAsync(output);

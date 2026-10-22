@@ -23,7 +23,7 @@ Clips del escritorio, privados y locales. Windows, C# / WPF, interfaz oscura y l
 - Minimizar → bandeja; X en principal → detener video/audio y cerrar. Solo una instancia de esta versión por sesión de Windows.
 
 ## Audio y límites
-Escritorio contiene toda la salida seleccionada. Para quitar música al editar se usa una mezcla de fuentes individuales **sin sumar Escritorio**. No se pueden recuperar fuentes que no se grabaron por separado. En videos importados, la primera pista se trata como principal. La preescucha actual usa la pista principal; la mezcla individual se aplica al exportar.
+Escritorio contiene toda la salida seleccionada. Para quitar música al editar se usa una mezcla de fuentes individuales **sin sumar Escritorio**. No se pueden recuperar fuentes que no se grabaron por separado. El visor reproduce la mezcla seleccionada, incluido el micrófono. Cada cambio prepara una copia temporal local con video sin recodificar y una pista de audio mezclada; pulsa reproducir cuando esté lista. La selección inicial usa fuentes separadas sin sumar Escritorio si hay pistas de aplicaciones. Puedes cambiar las casillas y volúmenes, o escuchar solo la primera pista. Límite de 1 GB por copia temporal; se elimina al cerrar normalmente.
 
 La captura de aplicaciones requiere Windows 10 actualizado o Windows 11. Se resuelve el proceso al activar y se incluye su árbol; varias instancias, procesos compartidos o aplicaciones que renderizan audio fuera de ese árbol pueden no comportarse como esperas. Si cambias de dispositivo o reinicias una aplicación, detén y vuelve a activar. No hay reconexión transparente todavía. Si una fuente falla, se detiene la sesión tras terminar el guardado en curso.
 

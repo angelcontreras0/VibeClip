@@ -19,3 +19,5 @@
 - Cierres abruptos pueden dejar temporales; se documenta dónde se encuentran. No hay eliminación indiscriminada de otras sesiones.
 
 Las futuras entregas deben repetir las pruebas, consulta de dependencias y revisión de permisos, y añadir validación de hardware, firma y análisis dinámico.
+
+La preescucha crea copias MP4 en la carpeta temporal del usuario, bajo VibeClip-preview-GUID. No recodifica video; mezcla solo el audio seleccionado. Cada copia tiene un límite estimado de 1 GiB y exige espacio libre adicional. Las operaciones se cancelan al cerrar y las copias se eliminan al cerrar normalmente; un cierre abrupto puede dejar restos privados sin cifrar. Cambiar fuentes pausa la reproducción mientras se prepara la nueva mezcla.
