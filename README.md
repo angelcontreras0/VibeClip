@@ -1,66 +1,55 @@
-# VibeClip
+# VibeClip · Desarrollo 0.3
 
-Captura tus últimos momentos del escritorio y guarda clips en tu PC. Aplicación Windows en C# / WPF, con interfaz oscura y lavanda, ajustes locales y sin cuentas, telemetría, nube ni descargas automáticas.
+Clips del escritorio, privados y locales. Windows, C# / WPF, interfaz oscura y lavanda. Predeterminado: **1080p, 60 FPS, 60 segundos**. Sin cuentas, nube, telemetría, descargas automáticas ni clientes HTTP en la app.
 
-**Estado: desarrollo 0.2.** Hay un primer motor experimental de video y exportación real. No hay aún captura de audio, selección de ventanas ni cifras de rendimiento garantizadas.
+**Versión experimental.** Las pruebas automáticas usan video/tonos sintéticos, sin grabar pantalla ni micrófono. La captura con tus dispositivos, aplicaciones, GPU y ventanas requiere prueba en el equipo real. No se garantiza aún consumo mínimo, compatibilidad universal ni sincronización audiovisual precisa.
 
-## Qué funciona
+## Probar
+1. Cierra versiones anteriores, descomprime el ZIP completo y abre `VibeClip.App.exe`. El paquete incluye el runtime de escritorio .NET 10; no necesita instalación global ni administrador.
+2. FFmpeg sigue siendo externo: conserva `ffmpeg.exe` y `ffprobe.exe` juntos y selecciónalo en **Configuración → Video → Opciones avanzadas**. Usa un distribuidor enlazado en [el sitio oficial](https://ffmpeg.org/download.html). La app no descarga ni ejecuta motores desde PATH. También reconoce una carpeta `tools` junto a la app si tú colocas allí el motor.
+3. Selecciona una pantalla por nombre/resolución, o pulsa **Elegir ventana**. No necesitas introducir índices DXGI.
+4. En **Configuración → Audio**, elige y activa tus fuentes. Micrófono apagado por defecto. Abre las aplicaciones elegidas antes de activar la captura.
+5. Pulsa el interruptor de captura y guarda con el botón o tu atajo. La app nunca empieza a grabar automáticamente, incluso si eliges iniciar con Windows.
 
-- Principal con estado real de captura, duración, carpeta, atajo global y tarjetas de clips recientes.
-- Ajustes persistentes, 1920 × 1080 a 60 FPS por defecto. Atajo personalizable con detección de conflictos.
-- Minimizar principal → bandeja; X en principal → detener el motor y cerrar. La captura no se activa automáticamente.
-- Captura experimental de un monitor mediante Desktop Duplication (`ddagrab`) de FFmpeg. Automático prueba NVENC, AMF y Quick Sync; CPU requiere selección explícita.
-- Búfer de segmentos de video comprimido en disco, con límite de tamaño configurable y eliminación al detenerse normalmente.
-- Guardar por botón, bandeja o atajo mientras la captura continúa. Se guardan los segmentos disponibles, con precisión aproximada de un segundo y unos 1.3 segundos de espera para cerrar el segmento en curso.
-- Visor local bajo demanda: reproducción, rango de recorte, selección de pistas **presentes en el archivo**, silencio y volumen al exportar.
-- Exportación a una copia MP4: modo rápido con copia del video y corte aproximado, o exacto con recodificación. Mezcla de audio a AAC y opción de dejar la copia sin audio. Cancelación sin sobrescribir el original.
+## Funciones
+- Pantallas detectadas desde DXGI con resolución e identificación de principal; ventanas abiertas mediante selector. El modo ventana es de compatibilidad GDI y puede tener mayor consumo o no capturar contenido protegido/minimizado.
+- Duraciones 30/60/90/120 segundos y duración personalizada desde Configuración → Clips.
+- Calidad ligera/equilibrada/alta; 30/60 FPS, cursor, codificador GPU automático o elección explícita de CPU.
+- Audio WASAPI de la salida predeterminada o dispositivo elegido, micrófono y aplicaciones por proceso/árbol de procesos. NAudio.Wasapi 3.3.0, versión fijada y licencia MIT incluida.
+- Fuentes activables con nombre, dispositivo o aplicación. Agregar/quitar aplicaciones hasta ocho fuentes. Pistas separadas con nombres conservados o mezcla única.
+- Clips recientes con miniaturas estáticas generadas localmente bajo demanda, sin reproducción automática. La generación se cancela al minimizar; caché limitada a 60 imágenes y opción para borrarla.
+- Visor bajo demanda: reproducir, recortar y exportar una copia MP4. Corte rápido aproximado o corte exacto con recodificación, volumen/silencio por pista existente y cancelación.
+- Notificaciones y sonido al guardar; inicio minimizado e inicio con Windows opcionales. Este último registra únicamente un valor de inicio para el usuario actual.
+- Minimizar → bandeja; X en principal → detener video/audio y cerrar. Solo una instancia de esta versión por sesión de Windows.
 
-## Probar la app
+## Audio y límites
+Escritorio contiene toda la salida seleccionada. Para quitar música al editar se usa una mezcla de fuentes individuales **sin sumar Escritorio**. No se pueden recuperar fuentes que no se grabaron por separado. En videos importados, la primera pista se trata como principal. La preescucha actual usa la pista principal; la mezcla individual se aplica al exportar.
 
-1. Descomprime la compilación y abre `VibeClip.App.exe`. Requiere el runtime de escritorio .NET 8; no pide administrador.
-2. Obtén FFmpeg para Windows desde un proveedor enlazado en [su sitio oficial](https://ffmpeg.org/download.html). No se incluye el binario de FFmpeg en este repositorio ni en la compilación de VibeClip.
-3. En **Configuración → Video**, selecciona el `ffmpeg.exe` que descargaste. Deja `ffprobe.exe` en la misma carpeta. Para las funciones actuales se necesita una compilación con `ddagrab`, los codificadores de tu GPU y `libx264` para el recorte exacto.
-4. Elige el índice DXGI del monitor (inicialmente 0), carpeta y duración. El orden DXGI puede diferir del número de pantalla mostrado por Windows.
-5. Pulsa **Activar**, espera a que haya video en el búfer y guarda con el botón o atajo. **Estos clips todavía no tienen audio.**
-6. También puedes abrir un video existente con audio para probar recorte y mezcla sin activar la captura.
+La captura de aplicaciones requiere Windows 10 actualizado o Windows 11. Se resuelve el proceso al activar y se incluye su árbol; varias instancias, procesos compartidos o aplicaciones que renderizan audio fuera de ese árbol pueden no comportarse como esperas. Si cambias de dispositivo o reinicias una aplicación, detén y vuelve a activar. No hay reconexión transparente todavía. Si una fuente falla, se detiene la sesión tras terminar el guardado en curso.
 
-El ejecutable externo que selecciones se ejecuta con tus permisos: utiliza una fuente de confianza. VibeClip solo genera comandos locales y no añade destinos de red. Los procesos de análisis, concatenación y exportación limitan los protocolos de entrada a archivos y tuberías locales.
+El audio usa PCM16 estéreo a 48 kHz con marcas QPC y un máximo agregado de aproximadamente 128 MiB. La duración se reduce si las fuentes y el tiempo elegido exceden ese límite. El origen temporal del video se estima a partir del primer segmento cerrado: **puede existir desfase**, pendiente de calibración y pruebas reales. No describir este prototipo como sincronización de producción.
 
-## Límites de esta etapa
+El video usa segmentos comprimidos en disco, no un búfer en RAM. El límite de espacio se aplica a segmentos cerrados; segmento activo y copias temporales necesitan espacio adicional. Guardar espera alrededor de 1.3 segundos y trabaja con granularidad aproximada de un segundo. El camino de monitor todavía hace copias GPU/CPU para escalar. No hay cifras de rendimiento garantizadas.
 
-- No es aún el motor definitivo optimizado. El camino de video descarga fotogramas de GPU a CPU para escalar y luego los entrega al codificador elegido; esto introduce copias y consumo que deben medirse y reducirse.
-- El búfer usa disco, **no RAM**. Su límite se aplica a segmentos cerrados; el segmento activo y las copias temporales al guardar requieren espacio adicional. La duración disponible puede ser menor si se alcanza el límite de tamaño.
-- Un cierre inesperado puede dejar restos de búfer en `%LOCALAPPDATA%/VibeClip/buffer`; no son clips publicados y puedes eliminarlos con VibeClip cerrado. No se borra automáticamente contenido de otras sesiones.
-- La GPU, sus controladores y Desktop Duplication requieren prueba en el equipo real. Las pruebas automatizadas de este avance usan video sintético, sin capturar el escritorio del usuario.
-- El visor depende de los códecs de reproducción de Windows. La preescucha usa la pista principal; los cambios individuales de mezcla se aplican a la copia al exportar.
-- No hay aún fuentes de audio por aplicación. La pestaña Audio muestra el diseño previsto, identificado como pendiente.
-- La selección de ventana, miniaturas bajo demanda, arranque con Windows y actualizaciones quedan para siguientes avances.
+## Privacidad y seguridad
+- No se graba al abrir la app ni Configuración. Los dispositivos se activan al pulsar el interruptor.
+- Motor externo bajo tus permisos: elige un ejecutable de confianza. Comandos con argumentos separados, sin shell, y entradas de archivos restringidas a protocolos locales.
+- Originales conservados; exportación a temporales y finalización solo al terminar. Cancelar no deja una copia final incompleta.
+- Procesos multimedia ligados a la vida de la app mediante Job Objects; controles de tiempo de espera y cierre/cancelación.
+- Ajustes limitados y validados. Dependencias fijadas; consulta [la revisión](docs/SECURITY.md).
+- El caché puede contener imágenes/audio/video privados de tu escritorio. Se almacena localmente, **sin cifrado propio**. Un cierre abrupto puede dejar restos en `%LOCALAPPDATA%/VibeClip/buffer`. Con VibeClip cerrado puedes eliminar esa carpeta. Las miniaturas están en `%LOCALAPPDATA%/VibeClip/thumbnails`; se borran desde General.
 
-## Audio sin duplicados
+No es una versión firmada ni auditada por terceros. La revisión de paquetes no equivale a ausencia de fallos.
 
-Cuando se implemente la captura de audio, Escritorio conservará toda la salida predeterminada de Windows y las aplicaciones serán pistas adicionales. Para quitar música, se usará una mezcla de las pistas individuales sin sumar Escritorio. Silenciar una pista individual no elimina el sonido ya incluido en Escritorio.
-
-En archivos importados, el visor trata la primera pista como principal y muestra las demás con los nombres que traiga el archivo. Revisa los nombres antes de mezclar: no puede recuperar fuentes que no fueron grabadas por separado.
-
-## Desarrollo
-
-Windows 10/11, SDK de .NET 8. Se revisará la versión de soporte antes de una entrega estable.
-
+## Desarrollo y pruebas
+Windows y SDK .NET 10:
 ```powershell
-dotnet build src/VibeClip.App/VibeClip.App.csproj -c Release
+dotnet build src/VibeClip.App -c Release
 dotnet run --project src/VibeClip.App
-dotnet run --project tests/VibeClip.Core.Checks -c Release
-dotnet run --project tests/VibeClip.Ui.Checks -c Release
-```
-
-Pruebas multimedia opcionales con un FFmpeg local: generan patrones de video y tonos de audio; **no capturan pantalla ni micrófono**.
-
-```powershell
 dotnet run --project tests/VibeClip.Core.Checks -c Release -- C:\ruta\ffmpeg.exe
+dotnet run --project tests/VibeClip.Ui.Checks -c Release
+dotnet publish src/VibeClip.App -c Release -r win-x64 --self-contained true -o artifacts/VibeClip
 ```
+La suite multimedia genera patrones y tonos: no abre dispositivos de captura. CI descarga FFmpeg 9.0.2 con SHA-256 fijado solo para pruebas; no se incluye en la app. El motor de video externo requiere `ddagrab`, `gdigrab`, codificador compatible y `libx264` para recorte exacto.
 
-```powershell
-dotnet publish src/VibeClip.App -c Release -r win-x64 --self-contained false -o artifacts/VibeClip
-```
-
-GitHub Actions compila, ejecuta pruebas de modelos/multimedia y construye las ventanas, y publica un artefacto de desarrollo. CI descarga una versión fija de FFmpeg con SHA-256 verificado solo para pruebas sintéticas; el motor no se incluye en el artefacto de la app. El acceso a red de CI es independiente de la app. Consulta [arquitectura](docs/ARCHITECTURE.md), [diseño](docs/DESIGN.md) y [plan](docs/ROADMAP.md).
+[Arquitectura](docs/ARCHITECTURE.md) · [Plan](docs/ROADMAP.md) · [Revisión de seguridad](docs/SECURITY.md)

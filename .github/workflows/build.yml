@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '10.0.x'
       - run: dotnet build src/VibeClip.App/VibeClip.App.csproj --configuration Release
       - name: Verify multimedia with synthetic video and tones
         shell: pwsh
@@ -26,7 +26,15 @@ jobs:
           $engine = Get-ChildItem $unpacked -Recurse -Filter ffmpeg.exe | Select-Object -First 1
           dotnet run --project tests/VibeClip.Core.Checks --configuration Release -- $engine.FullName
       - run: dotnet run --project tests/VibeClip.Ui.Checks --configuration Release
-      - run: dotnet publish src/VibeClip.App/VibeClip.App.csproj --configuration Release --runtime win-x64 --self-contained false --output artifacts/VibeClip
+      - run: dotnet publish src/VibeClip.App/VibeClip.App.csproj --configuration Release --runtime win-x64 --self-contained true --output artifacts/VibeClip
+      - name: Include instructions and license notices
+        shell: pwsh
+        run: |
+          Copy-Item README.md artifacts/VibeClip/LEEME.md
+          Copy-Item docs artifacts/VibeClip/docs -Recurse
+          Copy-Item licenses artifacts/VibeClip/licenses -Recurse
+          $notices = Join-Path $env:DOTNET_ROOT 'ThirdPartyNotices.txt'
+          if (Test-Path $notices) { Copy-Item $notices artifacts/VibeClip/licenses/DotNet-ThirdPartyNotices.txt }
       - uses: actions/upload-artifact@v4
         with:
           name: VibeClip-windows-x64-preview

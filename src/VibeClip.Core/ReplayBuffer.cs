@@ -55,6 +55,9 @@ public sealed class ReplayBuffer : IAsyncDisposable
     public bool IsRunning => process is { HasExited: false };
     public string ActiveEncoder { get; private set; } = "";
     public double BufferedSeconds { get; private set; }
+    public long CaptureEpochQpc { get; private set; }
+    public string AudioLabel { get; set; } = "Sin audio";
+    public long WindowHandle { get; init; }
     public event Action<string>? StatusChanged;
 
     public ReplayBuffer(AppSettings settings, string cacheRoot) : this(settings, cacheRoot, false) { }
@@ -67,10 +70,14 @@ public sealed class ReplayBuffer : IAsyncDisposable
         Directory.CreateDirectory(folder);
     }
 
-    public static IReadOnlyList<string> CaptureArguments(AppSettings s, string folder, string encoder)
+    public static IReadOnlyList<string> CaptureArguments(AppSettings s, string folder, string encoder, long windowHandle = 0)
     {
-        var filter = $"ddagrab=output_idx={s.OutputIndex}:framerate={s.FramesPerSecond}:draw_mouse={(s.ShowCursor ? 1 : 0)},hwdownload,format=bgra,scale={s.Width}:{s.Height}:force_original_aspect_ratio=decrease,pad={s.Width}:{s.Height}:(ow-iw)/2:(oh-ih)/2,format=nv12";
-        var args = new List<string> { "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", filter, "-an", "-c:v", encoder, "-b:v", "8M", "-maxrate", "12M", "-bufsize", "16M", "-g", s.FramesPerSecond.ToString(CultureInfo.InvariantCulture), "-bf", "0", "-force_key_frames", "expr:gte(t,n_forced*1)" };
+        var scale = $"scale={s.Width}:{s.Height}:force_original_aspect_ratio=decrease,pad={s.Width}:{s.Height}:(ow-iw)/2:(oh-ih)/2,format=nv12";
+        var args = new List<string> { "-hide_banner", "-loglevel", "error", "-y" };
+        if (windowHandle == 0) args.AddRange(["-f", "lavfi", "-i", $"ddagrab=output_idx={s.OutputIndex}:framerate={s.FramesPerSecond}:draw_mouse={(s.ShowCursor ? 1 : 0)},hwdownload,format=bgra,{scale}"]);
+        else args.AddRange(["-f", "gdigrab", "-framerate", s.FramesPerSecond.ToString(CultureInfo.InvariantCulture), "-draw_mouse", s.ShowCursor ? "1" : "0", "-i", "hwnd=" + windowHandle.ToString(CultureInfo.InvariantCulture), "-vf", scale]);
+        var bitrate = s.Quality == "light" ? "5M" : s.Quality == "high" ? "16M" : "8M";
+        args.AddRange(["-an", "-c:v", encoder, "-b:v", bitrate, "-maxrate", bitrate, "-bufsize", "16M", "-g", s.FramesPerSecond.ToString(CultureInfo.InvariantCulture), "-bf", "0", "-force_key_frames", "expr:gte(t,n_forced*1)"]);
         if (encoder == "h264_nvenc") args.AddRange(["-preset", "p1", "-tune", "ll"]);
         if (encoder == "h264_amf") args.AddRange(["-quality", "speed"]);
         if (encoder == "h264_qsv") args.AddRange(["-preset", "veryfast"]);
@@ -87,7 +94,7 @@ public sealed class ReplayBuffer : IAsyncDisposable
         foreach (var encoder in encoders)
         {
             cancellation.ThrowIfCancellationRequested();
-            var arguments = CaptureArguments(settings, folder, encoder).ToList();
+            var arguments = CaptureArguments(settings, folder, encoder, WindowHandle).ToList();
             if (synthetic)
             {
                 arguments[arguments.IndexOf("-i") + 1] = $"testsrc2=size={settings.Width}x{settings.Height}:rate={settings.FramesPerSecond}";
@@ -104,6 +111,7 @@ public sealed class ReplayBuffer : IAsyncDisposable
                     await ReadIndexAsync();
                     if (segments.Count > 0)
                     {
+                        CaptureEpochQpc = CaptureClock.Now - (long)(segments[^1].End * 10000000);
                         ActiveEncoder = encoder; monitor = MonitorAsync(); return;
                     }
                     await Task.Delay(200, cancellation);
@@ -126,7 +134,7 @@ public sealed class ReplayBuffer : IAsyncDisposable
             {
                 if (!IsRunning) { StatusChanged?.Invoke("La captura se detuvo. " + (errorTask is null ? "" : await errorTask)); return; }
                 await ReadIndexAsync();
-                StatusChanged?.Invoke($"{BufferedSeconds:0} s disponibles · {ActiveEncoder} · Sin audio");
+                StatusChanged?.Invoke($"{BufferedSeconds:0} s disponibles · {AudioLabel}");
             }
         }
         catch (OperationCanceledException) { }
@@ -151,7 +159,7 @@ public sealed class ReplayBuffer : IAsyncDisposable
         finally { gate.Release(); }
     }
 
-    public async Task<string> SaveAsync(string outputFolder, int seconds, CancellationToken cancellation = default)
+    public async Task<string> SaveAsync(string outputFolder, int seconds, CancellationToken cancellation = default, IReplayAudio? audio = null)
     {
         if (!IsRunning) throw new InvalidOperationException("La captura no está activa.");
         // Wait for the current one-second segment to close, keeping the tail of the moment.
@@ -172,12 +180,28 @@ public sealed class ReplayBuffer : IAsyncDisposable
             finally { gate.Release(); }
             var list = Path.Combine(snapshot, "concat.txt");
             await File.WriteAllLinesAsync(list, chosen.Select(s => $"file '{s.Name}'"), cancellation);
+            var sounds = audio is null ? [] : await audio.SnapshotAsync(snapshot, CaptureEpochQpc + (long)(chosen[0].Start * 10000000), length, cancellation);
             outputFolder = LocalFiles.Require(outputFolder); Directory.CreateDirectory(outputFolder);
             var destination = Path.Combine(outputFolder, $"VibeClip_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}_{Guid.NewGuid().ToString("N")[..6]}.mp4");
             var temporary = Path.Combine(outputFolder, "." + Guid.NewGuid().ToString("N") + ".mp4");
             try
             {
-                var result = await MediaTools.RunAsync(settings.FFmpegPath, ["-hide_banner", "-loglevel", "error", "-nostdin", "-n", "-protocol_whitelist", "file,pipe", "-f", "concat", "-safe", "1", "-i", list, "-map", "0:v:0", "-c", "copy", "-movflags", "+faststart", temporary], cancellation);
+                var arguments = new List<string> { "-hide_banner", "-loglevel", "error", "-nostdin", "-n", "-protocol_whitelist", "file,pipe", "-f", "concat", "-safe", "1", "-i", list };
+                foreach (var sound in sounds) arguments.AddRange(["-protocol_whitelist", "file,pipe", "-i", LocalFiles.Require(sound.Path)]);
+                arguments.AddRange(["-map", "0:v:0", "-c:v", "copy"]);
+                if (!settings.SeparateTracks && sounds.Count > 0)
+                {
+                    var selected = sounds.Select((s, i) => (Sound: s, Index: i)).Where(x => !sounds.Any(s => s.IsDesktop) || x.Sound.IsDesktop || settings.AudioSources.Any(s => s.Name == x.Sound.Name && s.Kind == "microphone")).ToArray();
+                    var labels = string.Concat(selected.Select(x => $"[{x.Index + 1}:a:0]"));
+                    arguments.AddRange(["-filter_complex", labels + $"amix=inputs={selected.Length}:normalize=0,alimiter=limit=0.95[mix]", "-map", "[mix]", "-metadata:s:a:0", "handler_name=Mezcla", "-c:a", "aac", "-b:a", "192k"]);
+                }
+                else if (sounds.Count > 0)
+                {
+                    for (var i = 0; i < sounds.Count; i++) arguments.AddRange(["-map", $"{i + 1}:a:0", $"-metadata:s:a:{i}", "handler_name=" + sounds[i].Name, $"-metadata:s:a:{i}", "title=" + sounds[i].Name, $"-disposition:a:{i}", i == 0 ? "default" : "0"]);
+                    arguments.AddRange(["-c:a", "aac", "-b:a", "160k"]);
+                }
+                arguments.AddRange(["-t", length.ToString("0.######", CultureInfo.InvariantCulture), "-movflags", "+faststart", temporary]);
+                var result = await MediaTools.RunAsync(settings.FFmpegPath, arguments, cancellation);
                 if (result.ExitCode != 0) throw new IOException("No se pudo guardar el clip. " + result.Error);
                 cancellation.ThrowIfCancellationRequested(); File.Move(temporary, destination); return destination;
             }

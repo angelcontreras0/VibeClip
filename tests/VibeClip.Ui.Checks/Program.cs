@@ -46,6 +46,15 @@ internal static class Program
         var tabs = dock.Children.OfType<TabControl>().Single(); tabs.SelectedIndex = 1;
         ((FrameworkElement)settings.Content).UpdateLayout();
         Console.WriteLine("PASS audio tab layout");
+        if (args.Length > 0)
+        {
+            var size = new Size(settings.Width - 16, settings.Height - 40);
+            ((FrameworkElement)settings.Content).Measure(size); ((FrameworkElement)settings.Content).Arrange(new Rect(size)); ((FrameworkElement)settings.Content).UpdateLayout();
+            var surface = new DrawingVisual();
+            using (var drawing = surface.RenderOpen()) { drawing.DrawRectangle(settings.Background, null, new Rect(size)); drawing.DrawRectangle(new VisualBrush((FrameworkElement)settings.Content), null, new Rect(size)); }
+            var bitmap = new RenderTargetBitmap((int)size.Width, (int)size.Height, 96, 96, PixelFormats.Pbgra32); bitmap.Render(surface);
+            var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap)); using var output = File.Create(Path.Combine(args[0], "audio.png")); encoder.Save(output);
+        }
         main.Width = main.MinWidth; main.Height = main.MinHeight;
         ((FrameworkElement)main.Content).Measure(new Size(main.MinWidth - 16, main.MinHeight - 40));
         ((FrameworkElement)main.Content).Arrange(new Rect(0, 0, main.MinWidth - 16, main.MinHeight - 40));

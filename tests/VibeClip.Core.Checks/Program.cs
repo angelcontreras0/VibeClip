@@ -25,6 +25,12 @@ try
     var segments = new[] { new ReplaySegment("segment_1.mkv", 0, 1, 100), new ReplaySegment("segment_2.mkv", 1, 2, 100), new ReplaySegment("segment_3.mkv", 2, 3, 100) };
     Check(SegmentIndex.Retain(segments, 60, 200).Select(s => s.Name).SequenceEqual(new[] { "segment_2.mkv", "segment_3.mkv" }), "buffer byte cap retains newest segments");
     Check(SegmentIndex.Retain(segments, 60, 50).Count == 0, "oversized segment cannot exceed buffer limit");
+    var ring = new PcmRing(2); var packet = Enumerable.Repeat((byte)9, PcmRing.BytesPerSecond / 10).ToArray(); ring.Write(10000000, packet);
+    using (var copied = new MemoryStream()) { ring.CopyTo(copied, 10000000, 0.1); Check(copied.ToArray().SequenceEqual(packet), "audio ring preserves timestamped PCM"); }
+    using (var silent = new MemoryStream()) { ring.CopyTo(silent, 0, 0.1); Check(silent.ToArray().All(b => b == 0), "missing audio interval is silence"); }
+    ring.Write(30000000, packet);
+    using (var stale = new MemoryStream()) { ring.CopyTo(stale, 10000000, 0.1); Check(stale.ToArray().All(b => b == 0), "audio ring cannot replay stale wrapped data"); }
+    ring.Clear(); using (var cleared = new MemoryStream()) { ring.CopyTo(cleared, 30000000, 0.1); Check(cleared.ToArray().All(b => b == 0), "stopping clears retained PCM"); }
     var settingsPath = Path.Combine(folder, "settings.json");
     var store = new SettingsStore(settingsPath);
     var custom = defaults with { ClipSeconds = 120, ClipFolder = folder };
@@ -84,9 +90,10 @@ try
         await using (var replay = new ReplayBuffer(defaults with { Width = 320, Height = 240, FramesPerSecond = 30, FFmpegPath = engine, Encoder = "libx264", ClipSeconds = 5 }, cache, true))
         {
             await replay.StartAsync(); await Task.Delay(3200);
-            var saved = await replay.SaveAsync(folder, 5);
+            var saved = await replay.SaveAsync(folder, 5, audio: new SyntheticAudio());
             var savedMedia = await exporter.ProbeAsync(saved);
-            Check(savedMedia.Duration.TotalSeconds is > 2 and < 9 && savedMedia.AudioTracks.Count == 0, "live synthetic replay saves decodable video");
+            Check(savedMedia.Duration.TotalSeconds is > 2 and < 9 && savedMedia.AudioTracks.Count == 2, "live synthetic replay saves video with two audio tracks");
+            Check(savedMedia.AudioTracks.Select(t => t.Name).SequenceEqual(new[] { "Escritorio", "Música" }), "saved replay retains source names");
             Check(replay.IsRunning, "saving a clip keeps capture running");
         }
         Check(!Directory.EnumerateDirectories(cache).Any(), "stopping removes only the owned buffer session");
@@ -94,3 +101,20 @@ try
     Console.WriteLine($"{checks} checks passed.");
 }
 finally { Directory.Delete(folder, true); }
+
+sealed class SyntheticAudio : IReplayAudio
+{
+    public Task<IReadOnlyList<AudioSnapshot>> SnapshotAsync(string folder, long startQpc, double seconds, CancellationToken cancellation)
+    {
+        var tracks = new List<AudioSnapshot>();
+        foreach (var (name, frequency) in new[] { ("Escritorio", 440), ("Música", 880) })
+        {
+            var path = Path.Combine(folder, frequency + ".wav"); var frames = (int)(seconds * 48000); var dataBytes = frames * 4;
+            using var output = new BinaryWriter(File.Create(path));
+            output.Write(System.Text.Encoding.ASCII.GetBytes("RIFF")); output.Write(36 + dataBytes); output.Write(System.Text.Encoding.ASCII.GetBytes("WAVEfmt ")); output.Write(16); output.Write((short)1); output.Write((short)2); output.Write(48000); output.Write(192000); output.Write((short)4); output.Write((short)16); output.Write(System.Text.Encoding.ASCII.GetBytes("data")); output.Write(dataBytes);
+            for (var frame = 0; frame < frames; frame++) { var value = (short)(Math.Sin(frame * 2 * Math.PI * frequency / 48000) * 1000); output.Write(value); output.Write(value); }
+            tracks.Add(new(path, name, frequency == 440));
+        }
+        return Task.FromResult<IReadOnlyList<AudioSnapshot>>(tracks);
+    }
+}

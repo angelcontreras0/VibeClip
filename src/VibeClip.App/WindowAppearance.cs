@@ -7,6 +7,7 @@ internal static class WindowAppearance
 {
     public static void Configure(Window window)
     {
+        var icon = System.Windows.Interop.Imaging.CreateBitmapSourceFromHIcon(Branding.Icon.Handle, Int32Rect.Empty, System.Windows.Media.Imaging.BitmapSizeOptions.FromEmptyOptions()); icon.Freeze(); window.Icon = icon;
         var area = SystemParameters.WorkArea;
         window.Width = Math.Min(window.Width, Math.Max(640, area.Width - 32));
         window.Height = Math.Min(window.Height, Math.Max(480, area.Height - 32));

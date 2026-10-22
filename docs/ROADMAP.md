@@ -1,27 +1,19 @@
-# Plan de VibeClip
+# Estado 0.3
 
-## Implementado en desarrollo 0.2
-- Base WPF con diseño oscuro/lavanda, ajustes, carpeta, bandeja y atajo global.
-- Primer motor de video de monitor, mediante FFmpeg externo seleccionado manualmente.
-- Búfer comprimido acotado en disco y guardado por segmentos mientras continúa la captura.
-- Visor, recorte, exportación local a copia y mezcla de pistas existentes en videos importados.
-- Pruebas sintéticas multimedia, modelos y construcción de ventanas.
+## Implementado para probar
+- Principal, selector de pantalla/ventana, interruptor, duraciones y atajo global.
+- Miniaturas estáticas, recientes y visor local con recorte/exportación.
+- Fuentes WASAPI de escritorio, micrófono y aplicaciones, activación explícita, pistas y nombres.
+- Opciones de calidad, espacio temporal, notificación, sonido, inicio minimizado y con Windows.
+- Paquete con runtime .NET 10. FFmpeg continúa externo.
+- Pruebas de modelos, audio circular, mux con tonos sintéticos y construcción de ventanas.
 
-## Siguiente: audio y captura de ventanas
-- Captura WASAPI de salida predeterminada y micrófono; luego captura por proceso/árbol de procesos.
-- Reloj común y sincronización, reconexión de dispositivos y aplicaciones.
-- Pistas adicionales con nombres persistentes, evitando duplicarlas con Escritorio en las mezclas.
-- Selector real de monitor y ventana. Revisar sesiones bloqueadas, cambios de pantalla y recuperación del motor.
+## Pendiente antes de considerar estable
+- Probar hardware, procesos reales y sincronización AV; calibrar origen temporal.
+- Reconectar fuentes y resolver cambios de dispositivos/aplicaciones sin perder sesión.
+- Captura de ventana por GPU, eliminar copias innecesarias y medir rendimiento.
+- Preescucha real de mezcla individual, controles de recorte más precisos, identificación de pantallas en varias GPU.
+- Limpieza segura de sesiones abandonadas y recuperación ante disco lleno.
+- Revisar empaquetado/licencia para motor integrado, firma y auditoría externa.
 
-## Optimización pendiente
-- Medir CPU/GPU/RAM/disco a 1080p60 durante sesiones largas y exportaciones simultáneas.
-- Reducir copias GPU/CPU, evaluar captura/escalado nativos y búfer comprimido en memoria con límite.
-- Reducir precisión aproximada y latencia del guardado. Ofrecer diagnóstico claro del codificador y retrasos.
-- Recuperar/limpiar sesiones abandonadas sin tocar sesiones activas ni clips guardados.
-- Miniaturas estáticas bajo demanda, preescucha real de la mezcla y controles de selección de rango más precisos.
-
-## Antes de una entrega estable
-- Revisar soporte de .NET, dependencias/licencias y distribución del motor.
-- Pruebas interactivas de bandeja, atajos, reproducción y hardware de captura.
-- Revisión de seguridad, firma y empaquetado. No describir una compilación de desarrollo como auditada o totalmente segura.
-- Comprobar que la app sigue funcionando sin conexión y que no emite tráfico propio.
+No se garantiza seguridad absoluta ni consumo mínimo sin pruebas y revisión adicionales.

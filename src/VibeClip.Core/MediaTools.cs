@@ -84,7 +84,11 @@ public sealed class ClipExporter(string ffmpeg)
         {
             if (stream.GetProperty("codec_type").GetString() != "audio") continue;
             var name = $"Pista {tracks.Count + 1}";
-            if (stream.TryGetProperty("tags", out var tags) && tags.TryGetProperty("title", out var title)) name = title.GetString() ?? name;
+            if (stream.TryGetProperty("tags", out var tags))
+            {
+                if (tags.TryGetProperty("title", out var title)) name = title.GetString() ?? name;
+                else if (tags.TryGetProperty("handler_name", out var handler) && handler.GetString() is { } label && label != "SoundHandler") name = label;
+            }
             tracks.Add(new(tracks.Count, name, stream.TryGetProperty("channels", out var channels) ? channels.GetInt32() : 0));
         }
         return new(TimeSpan.FromSeconds(seconds), tracks);

@@ -2,7 +2,12 @@ using System.Text.Json;
 
 namespace VibeClip.Core;
 
-public sealed record AudioSource(string Name, string Target, bool Enabled, bool IsDesktop = false);
+public sealed record AudioSource(string Name, string Target, bool Enabled, bool IsDesktop = false)
+{
+    public string Kind { get; init; } = "application";
+    public string DeviceId { get; init; } = "";
+    public string ProcessName { get; init; } = "";
+}
 
 public sealed record AppSettings
 {
@@ -20,11 +25,15 @@ public sealed record AppSettings
     public string Encoder { get; init; } = "auto";
     public int OutputIndex { get; init; }
     public int MaxBufferMegabytes { get; init; } = 256;
+    public string Quality { get; init; } = "balanced";
+    public bool SoundOnSave { get; init; }
+    public bool StartMinimized { get; init; }
+    public bool StartWithWindows { get; init; }
     public AudioSource[] AudioSources { get; init; } =
     [
-        new("Escritorio", "Salida predeterminada de Windows", true, true),
+        new("Escritorio", "Salida predeterminada de Windows", true, true) { Kind = "desktop" },
         new("Juego", "Sin seleccionar", false),
-        new("Micrófono", "Dispositivo predeterminado", false),
+        new("Micrófono", "Dispositivo predeterminado", false) { Kind = "microphone" },
         new("Música", "Sin seleccionar", false),
         new("Discord", "Sin seleccionar", false)
     ];
@@ -42,7 +51,8 @@ public sealed record AppSettings
             throw new ArgumentException("Selecciona una carpeta local con ruta absoluta.");
         if (HotkeyKey is < 1 or > 254 || (HotkeyModifiers & ~15u) != 0 || HotkeyModifiers == 0)
             throw new ArgumentException("El atajo necesita una tecla y al menos un modificador.");
-        if (AudioSources is null || AudioSources.Length > 16 || AudioSources.Any(x => x is null || string.IsNullOrWhiteSpace(x.Name)))
+        if (Quality is not ("light" or "balanced" or "high")) throw new ArgumentException("Calidad no válida.");
+        if (AudioSources is null || AudioSources.Length > 8 || AudioSources.Any(x => x is null || string.IsNullOrWhiteSpace(x.Name) || x.Name.Length > 64 || x.DeviceId is null || x.DeviceId.Length > 1024 || x.ProcessName is null || x.ProcessName.Length > 128 || x.Kind is not ("desktop" or "microphone" or "application")))
             throw new ArgumentException("La configuración de audio no es válida.");
     }
 }
@@ -57,6 +67,7 @@ public sealed class SettingsStore(string path)
         if (!File.Exists(path)) return new();
         try
         {
+            if (new FileInfo(path).Length > 1048576) throw new IOException("El archivo de configuración es demasiado grande.");
             var settings = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path), JsonOptions)
                 ?? throw new JsonException("Configuración vacía.");
             settings.Validate();
