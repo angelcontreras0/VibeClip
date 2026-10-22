@@ -72,10 +72,14 @@ public partial class ClipWindow : Window
     private void MediaOpened(object sender, RoutedEventArgs e)
     {
         if (!Player.NaturalDuration.HasTimeSpan) { Status.Text = "No se pudo leer la duración."; return; }
-        if (replacingPreview && opened)
+        if (replacingPreview)
         {
-            replacingPreview = false; Player.Pause(); Player.Position = previewPosition;
-            Status.Text = "Mezcla lista. Pulsa ▶ para escucharla."; return;
+            replacingPreview = false;
+            if (opened)
+            {
+                Player.Pause(); Player.Position = previewPosition;
+                Status.Text = "Mezcla lista. Pulsa ▶ para escucharla."; return;
+            }
         }
         duration = Player.NaturalDuration.TimeSpan;
         if (info is not null && info.Duration < duration) duration = info.Duration;
