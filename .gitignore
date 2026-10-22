@@ -1,0 +1,10 @@
+**/bin/
+**/obj/
+.vs/
+.idea/
+*.user
+artifacts/
+*.mp4
+*.mkv
+*.wav
+*.log
