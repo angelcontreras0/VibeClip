@@ -16,6 +16,10 @@ public sealed record AppSettings
     public bool ShowCursor { get; init; } = true;
     public bool SeparateTracks { get; init; } = true;
     public bool NotifyOnSave { get; init; } = true;
+    public string FFmpegPath { get; init; } = "";
+    public string Encoder { get; init; } = "auto";
+    public int OutputIndex { get; init; }
+    public int MaxBufferMegabytes { get; init; } = 256;
     public AudioSource[] AudioSources { get; init; } =
     [
         new("Escritorio", "Salida predeterminada de Windows", true, true),
@@ -30,6 +34,9 @@ public sealed record AppSettings
         if (Width is < 320 or > 7680 || Height is < 240 or > 4320)
             throw new ArgumentException("Resolución fuera del rango admitido.");
         if (FramesPerSecond is not (30 or 60)) throw new ArgumentException("Selecciona 30 o 60 FPS.");
+        if (Encoder is not ("auto" or "h264_nvenc" or "h264_amf" or "h264_qsv" or "libx264")) throw new ArgumentException("Codificador no admitido.");
+        if (OutputIndex is < 0 or > 15 || MaxBufferMegabytes is not (64 or 128 or 256 or 512 or 1024)) throw new ArgumentException("Monitor o límite del búfer fuera de rango.");
+        if (!string.IsNullOrEmpty(FFmpegPath)) LocalFiles.Require(FFmpegPath);
         if (ClipSeconds is < 5 or > 600) throw new ArgumentException("La duración debe estar entre 5 y 600 segundos.");
         if (string.IsNullOrWhiteSpace(ClipFolder) || !Path.IsPathFullyQualified(ClipFolder) || ClipFolder.StartsWith(@"\\", StringComparison.Ordinal))
             throw new ArgumentException("Selecciona una carpeta local con ruta absoluta.");

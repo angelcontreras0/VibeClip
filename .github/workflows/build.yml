@@ -1,19 +1,30 @@
 name: Windows build
 on:
   push:
+    branches: [main]
   pull_request:
 permissions:
   contents: read
 jobs:
   build:
     runs-on: windows-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
       - run: dotnet build src/VibeClip.App/VibeClip.App.csproj --configuration Release
-      - run: dotnet run --project tests/VibeClip.Core.Checks --configuration Release
+      - name: Verify multimedia with synthetic video and tones
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP 'ffmpeg-test.zip'
+          $unpacked = Join-Path $env:RUNNER_TEMP 'ffmpeg-test'
+          Invoke-WebRequest 'https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-9.0.2-essentials_build.zip' -OutFile $archive
+          if ((Get-FileHash $archive -Algorithm SHA256).Hash -ine '60f467265b1e312373dbcd92200c2618a74850f98d3d078e94296bb3fa2047ba') { throw 'FFmpeg checksum mismatch' }
+          Expand-Archive $archive -DestinationPath $unpacked
+          $engine = Get-ChildItem $unpacked -Recurse -Filter ffmpeg.exe | Select-Object -First 1
+          dotnet run --project tests/VibeClip.Core.Checks --configuration Release -- $engine.FullName
       - run: dotnet run --project tests/VibeClip.Ui.Checks --configuration Release
       - run: dotnet publish src/VibeClip.App/VibeClip.App.csproj --configuration Release --runtime win-x64 --self-contained false --output artifacts/VibeClip
       - uses: actions/upload-artifact@v4

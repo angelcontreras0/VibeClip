@@ -46,6 +46,11 @@ internal static class Program
         var tabs = dock.Children.OfType<TabControl>().Single(); tabs.SelectedIndex = 1;
         ((FrameworkElement)settings.Content).UpdateLayout();
         Console.WriteLine("PASS audio tab layout");
+        main.Width = main.MinWidth; main.Height = main.MinHeight;
+        ((FrameworkElement)main.Content).Measure(new Size(main.MinWidth - 16, main.MinHeight - 40));
+        ((FrameworkElement)main.Content).Arrange(new Rect(0, 0, main.MinWidth - 16, main.MinHeight - 40));
+        ((FrameworkElement)main.Content).UpdateLayout();
+        Console.WriteLine("PASS minimum main window layout");
         foreach (var window in windows) window.Close();
         app.Shutdown();
     }

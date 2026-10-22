@@ -12,6 +12,7 @@ public sealed class ShortcutWindow : Window
         Style = (Style)FindResource(typeof(Window));
         Title = "Cambiar atajo"; Width = 430; Height = 170; ResizeMode = ResizeMode.NoResize;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        WindowAppearance.Configure(this);
         Content = message;
         PreviewKeyDown += (_, e) =>
         {

@@ -1,30 +1,50 @@
 # VibeClip
 
-Clips del escritorio, locales y privados. Proyecto para Windows con interfaz nativa en C# / WPF, sin navegador integrado ni servicios de red.
+Captura tus últimos momentos del escritorio y guarda clips en tu PC. Aplicación Windows en C# / WPF, con interfaz oscura y lavanda, ajustes locales y sin cuentas, telemetría, nube ni descargas automáticas.
 
-**Estado: primera base de desarrollo, todavía no es una grabadora.** El motor de captura y la exportación no están implementados. La interfaz lo indica y no simula grabaciones.
+**Estado: desarrollo 0.2.** Hay un primer motor experimental de video y exportación real. No hay aún captura de audio, selección de ventanas ni cifras de rendimiento garantizadas.
 
-## Ya funciona
+## Qué funciona
 
-- Ajustes locales persistentes en `%LOCALAPPDATA%/VibeClip/settings.json`, con validación y recuperación si el archivo está dañado.
-- Valores iniciales 1920 × 1080, 60 FPS y 60 segundos; carpeta y duración configurables.
-- Atajo global personalizable con detección de conflictos mediante `RegisterHotKey`. Por ahora informa que el motor no está disponible.
-- Minimizar oculta la principal en la bandeja; doble clic en el icono la restaura; X cierra toda la app.
-- Catálogo de los últimos 30 archivos MP4/MKV de la carpeta elegida, actualizado al pedirlo.
-- Visor local creado bajo demanda: reproducir, pausar, buscar, silenciar todo y previsualizar un rango de recorte. Compatibilidad de reproducción sujeta a los códecs de Windows.
+- Principal con estado real de captura, duración, carpeta, atajo global y tarjetas de clips recientes.
+- Ajustes persistentes, 1920 × 1080 a 60 FPS por defecto. Atajo personalizable con detección de conflictos.
+- Minimizar principal → bandeja; X en principal → detener el motor y cerrar. La captura no se activa automáticamente.
+- Captura experimental de un monitor mediante Desktop Duplication (`ddagrab`) de FFmpeg. Automático prueba NVENC, AMF y Quick Sync; CPU requiere selección explícita.
+- Búfer de segmentos de video comprimido en disco, con límite de tamaño configurable y eliminación al detenerse normalmente.
+- Guardar por botón, bandeja o atajo mientras la captura continúa. Se guardan los segmentos disponibles, con precisión aproximada de un segundo y unos 1.3 segundos de espera para cerrar el segmento en curso.
+- Visor local bajo demanda: reproducción, rango de recorte, selección de pistas **presentes en el archivo**, silencio y volumen al exportar.
+- Exportación a una copia MP4: modo rápido con copia del video y corte aproximado, o exacto con recodificación. Mezcla de audio a AAC y opción de dejar la copia sin audio. Cancelación sin sobrescribir el original.
 
-## Pendiente
+## Probar la app
 
-- Captura de pantalla/ventana y codificación por hardware, con búfer circular de paquetes comprimidos.
-- Guardar los últimos 30/60/90/120 segundos con el atajo, sin volver a codificar cuando sea posible.
-- Captura de salida predeterminada, micrófono y audio por aplicación, sincronizados en pistas separadas.
-- Exportar recortes y mezclar/silenciar pistas individuales. El visor actual **no guarda recortes**.
-- Miniaturas bajo demanda, selección de aplicaciones/dispositivos, avisos y arranque opcional con Windows.
-- Medición de CPU, GPU, memoria, disco y estabilidad durante sesiones largas a 1080p60.
+1. Descomprime la compilación y abre `VibeClip.App.exe`. Requiere el runtime de escritorio .NET 8; no pide administrador.
+2. Obtén FFmpeg para Windows desde un proveedor enlazado en [su sitio oficial](https://ffmpeg.org/download.html). No se incluye el binario de FFmpeg en este repositorio ni en la compilación de VibeClip.
+3. En **Configuración → Video**, selecciona el `ffmpeg.exe` que descargaste. Deja `ffprobe.exe` en la misma carpeta. Para las funciones actuales se necesita una compilación con `ddagrab`, los codificadores de tu GPU y `libx264` para el recorte exacto.
+4. Elige el índice DXGI del monitor (inicialmente 0), carpeta y duración. El orden DXGI puede diferir del número de pantalla mostrado por Windows.
+5. Pulsa **Activar**, espera a que haya video en el búfer y guarda con el botón o atajo. **Estos clips todavía no tienen audio.**
+6. También puedes abrir un video existente con audio para probar recorte y mezcla sin activar la captura.
 
-## Compilar y ejecutar
+El ejecutable externo que selecciones se ejecuta con tus permisos: utiliza una fuente de confianza. VibeClip solo genera comandos locales y no añade destinos de red. Los procesos de análisis, concatenación y exportación limitan los protocolos de entrada a archivos y tuberías locales.
 
-Requisitos: Windows 10/11, SDK de .NET 8. La compatibilidad exacta del futuro motor se determinará en su implementación.
+## Límites de esta etapa
+
+- No es aún el motor definitivo optimizado. El camino de video descarga fotogramas de GPU a CPU para escalar y luego los entrega al codificador elegido; esto introduce copias y consumo que deben medirse y reducirse.
+- El búfer usa disco, **no RAM**. Su límite se aplica a segmentos cerrados; el segmento activo y las copias temporales al guardar requieren espacio adicional. La duración disponible puede ser menor si se alcanza el límite de tamaño.
+- Un cierre inesperado puede dejar restos de búfer en `%LOCALAPPDATA%/VibeClip/buffer`; no son clips publicados y puedes eliminarlos con VibeClip cerrado. No se borra automáticamente contenido de otras sesiones.
+- La GPU, sus controladores y Desktop Duplication requieren prueba en el equipo real. Las pruebas automatizadas de este avance usan video sintético, sin capturar el escritorio del usuario.
+- El visor depende de los códecs de reproducción de Windows. La preescucha usa la pista principal; los cambios individuales de mezcla se aplican a la copia al exportar.
+- No hay aún fuentes de audio por aplicación. La pestaña Audio muestra el diseño previsto, identificado como pendiente.
+- La selección de ventana, miniaturas bajo demanda, arranque con Windows y actualizaciones quedan para siguientes avances.
+
+## Audio sin duplicados
+
+Cuando se implemente la captura de audio, Escritorio conservará toda la salida predeterminada de Windows y las aplicaciones serán pistas adicionales. Para quitar música, se usará una mezcla de las pistas individuales sin sumar Escritorio. Silenciar una pista individual no elimina el sonido ya incluido en Escritorio.
+
+En archivos importados, el visor trata la primera pista como principal y muestra las demás con los nombres que traiga el archivo. Revisa los nombres antes de mezclar: no puede recuperar fuentes que no fueron grabadas por separado.
+
+## Desarrollo
+
+Windows 10/11, SDK de .NET 8. Se revisará la versión de soporte antes de una entrega estable.
 
 ```powershell
 dotnet build src/VibeClip.App/VibeClip.App.csproj -c Release
@@ -33,16 +53,14 @@ dotnet run --project tests/VibeClip.Core.Checks -c Release
 dotnet run --project tests/VibeClip.Ui.Checks -c Release
 ```
 
-Para distribuir una vista previa que utiliza el runtime de escritorio de .NET 8 instalado:
+Pruebas multimedia opcionales con un FFmpeg local: generan patrones de video y tonos de audio; **no capturan pantalla ni micrófono**.
+
+```powershell
+dotnet run --project tests/VibeClip.Core.Checks -c Release -- C:\ruta\ffmpeg.exe
+```
 
 ```powershell
 dotnet publish src/VibeClip.App -c Release -r win-x64 --self-contained false -o artifacts/VibeClip
 ```
 
-GitHub Actions compila, ejecuta comprobaciones y publica un artefacto de desarrollo. El acceso a Internet del proceso de desarrollo/CI no forma parte de la aplicación: el código de la app no realiza solicitudes de red.
-
-## Audio sin duplicados
-
-Escritorio conservará la salida predeterminada completa. Las fuentes individuales serán pistas adicionales. Para quitar música de una mezcla, se excluye Escritorio y se suman solo las pistas individuales grabadas que quieras escuchar. Silenciar una pista individual no puede eliminar su sonido de la grabación mezclada de Escritorio.
-
-Consulta [el plan de desarrollo](docs/ROADMAP.md) y [la arquitectura](docs/ARCHITECTURE.md). No hay cifras de rendimiento garantizadas: todavía deben medirse con el motor real.
+GitHub Actions compila, ejecuta pruebas de modelos/multimedia y construye las ventanas, y publica un artefacto de desarrollo. CI descarga una versión fija de FFmpeg con SHA-256 verificado solo para pruebas sintéticas; el motor no se incluye en el artefacto de la app. El acceso a red de CI es independiente de la app. Consulta [arquitectura](docs/ARCHITECTURE.md), [diseño](docs/DESIGN.md) y [plan](docs/ROADMAP.md).

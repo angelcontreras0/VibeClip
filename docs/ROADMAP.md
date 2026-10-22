@@ -1,24 +1,27 @@
 # Plan de VibeClip
 
-## 1. Base verificable (este avance)
-Principal, configuración local, atajo, bandeja, catálogo y reproducción local. Validación del modelo de ajustes, rangos y selección de audio. Captura y exportación explícitamente deshabilitadas.
+## Implementado en desarrollo 0.2
+- Base WPF con diseño oscuro/lavanda, ajustes, carpeta, bandeja y atajo global.
+- Primer motor de video de monitor, mediante FFmpeg externo seleccionado manualmente.
+- Búfer comprimido acotado en disco y guardado por segmentos mientras continúa la captura.
+- Visor, recorte, exportación local a copia y mezcla de pistas existentes en videos importados.
+- Pruebas sintéticas multimedia, modelos y construcción de ventanas.
 
-## 2. Primer clip real
-Prototipo de captura de un monitor con codificación por hardware. Búfer acotado de video comprimido. Atajo guarda un archivo reproducible en la carpeta local. Primero comprobar tiempos, fotogramas clave y escritura segura; después selección de ventanas. No incorporar un temporizador de capturas de pantalla como motor definitivo.
+## Siguiente: audio y captura de ventanas
+- Captura WASAPI de salida predeterminada y micrófono; luego captura por proceso/árbol de procesos.
+- Reloj común y sincronización, reconexión de dispositivos y aplicaciones.
+- Pistas adicionales con nombres persistentes, evitando duplicarlas con Escritorio en las mezclas.
+- Selector real de monitor y ventana. Revisar sesiones bloqueadas, cambios de pantalla y recuperación del motor.
 
-## 3. Audio
-Salida predeterminada de Windows y micrófono; luego captura por proceso y árbol de procesos. Selección de aplicaciones/dispositivos, reconexión y alineación temporal. Pistas adicionales y metadatos que permitan identificar cada fuente al abrir un clip. Probar por separado navegador, juegos y Discord.
+## Optimización pendiente
+- Medir CPU/GPU/RAM/disco a 1080p60 durante sesiones largas y exportaciones simultáneas.
+- Reducir copias GPU/CPU, evaluar captura/escalado nativos y búfer comprimido en memoria con límite.
+- Reducir precisión aproximada y latencia del guardado. Ofrecer diagnóstico claro del codificador y retrasos.
+- Recuperar/limpiar sesiones abandonadas sin tocar sesiones activas ni clips guardados.
+- Miniaturas estáticas bajo demanda, preescucha real de la mezcla y controles de selección de rango más precisos.
 
-## 4. Recorte y mezcla
-Visor muestra las pistas realmente presentes en cada archivo. Mutear, ajustar volumen y guardar una copia. No sobrescribir originales. Exportación cancelable y escritura temporal antes del nombre final. Recorte rápido en fotogramas clave; cortes exactos requieren una estrategia explícita de recodificación.
-
-## 5. Rendimiento y entrega
-Medir un reposo sin captura, captura 1080p60, ventana oculta, cinco fuentes de audio, exportación simultánea y sesiones largas. Registrar hardware, versión de Windows, codificador, bitrate, duración, CPU/GPU, memoria y latencias. Comparar con la línea base antes de afirmar que es ligera. Revisar licencias de cualquier dependencia multimedia antes de distribuirla.
-
-## Comportamientos acordados
-- 1080p60 por defecto; duración y atajo configurables.
-- Sin cuenta, telemetría, nube ni llamadas de red en ejecución.
-- Minimizar principal → bandeja; X en principal → salida completa.
-- Cerrar ventanas secundarias no cierra la principal.
-- Audio y dispositivos en Configuración; recientes en la principal.
-- Edición sencilla: recorte de extremos, volumen y silencio por pista, copia local.
+## Antes de una entrega estable
+- Revisar soporte de .NET, dependencias/licencias y distribución del motor.
+- Pruebas interactivas de bandeja, atajos, reproducción y hardware de captura.
+- Revisión de seguridad, firma y empaquetado. No describir una compilación de desarrollo como auditada o totalmente segura.
+- Comprobar que la app sigue funcionando sin conexión y que no emite tráfico propio.
